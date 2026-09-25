@@ -9,9 +9,9 @@ kind: ClusterRole
 metadata:
   name: fluentd
 rules:
-- apiGroups: [""]
-  resources: ["namespaces", "pods"]
-  verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["namespaces", "pods"]
+    verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -22,9 +22,9 @@ roleRef:
   kind: ClusterRole
   name: fluentd
 subjects:
-- kind: ServiceAccount
-  name: fluentd
-  namespace: kube-logging
+  - kind: ServiceAccount
+    name: fluentd
+    namespace: kube-logging
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -44,6 +44,17 @@ data:
       </parse>
     </source>
 
+    <source>
+      @type tail
+      path /var/log/kubernetes/audit.log
+      pos_file /var/log/fluentd-audit.log.pos
+      tag k8s.audit
+      read_from_head true
+      <parse>
+        @type json
+      </parse>
+    </source>
+
     <match kubernetes.**>
       @type elasticsearch
       host elasticsearch.kube-logging.svc.cluster.local
@@ -51,6 +62,23 @@ data:
       logstash_format true
       include_tag_key true
       tag_key log.tag
+      user elastic
+      password "#{ENV['ELASTIC_PASSWORD']}"
+      <buffer>
+        flush_interval 5s
+      </buffer>
+    </match>
+
+    <match k8s.audit>
+      @type elasticsearch
+      host elasticsearch.kube-logging.svc.cluster.local
+      port 9200
+      logstash_format true
+      logstash_prefix logstash
+      include_tag_key true
+      tag_key log.tag
+      user elastic
+      password "#{ENV['ELASTIC_PASSWORD']}"
       <buffer>
         flush_interval 5s
       </buffer>
@@ -74,32 +102,35 @@ spec:
     spec:
       serviceAccount: fluentd
       tolerations:
-      - operator: Exists
-        effect: NoSchedule
+        - operator: Exists
+          effect: NoSchedule
       containers:
-      - name: fluentd
-        image: fluent/fluentd:v1.16-debian
-        imagePullPolicy: IfNotPresent
-        securityContext:
-          runAsUser: 0
-        command: ["/bin/sh", "-c"]
-        args:
-          - gem install elasticsearch -v 7.17.0 --no-document && gem install fluent-plugin-elasticsearch -v 5.3.0 --no-document && gem install fluent-plugin-parser-cri --no-document && fluentd -c /fluentd/etc/fluent.conf
-        volumeMounts:
-        - name: config-volume
-          mountPath: /fluentd/etc/
-        - name: varlog
-          mountPath: /var/log
-        - name: varlibdockercontainers
-          mountPath: /var/lib/docker/containers
-          readOnly: true
+        - name: fluentd
+          image: fluent/fluentd:v1.16-debian
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 0
+          env:
+            - name: ELASTIC_PASSWORD
+              value: "Proyecto5Seguro2026!"
+          command: ["/bin/sh", "-c"]
+          args:
+            - gem install elasticsearch -v 7.17.0 --no-document && gem install fluent-plugin-elasticsearch -v 5.3.0 --no-document && gem install fluent-plugin-parser-cri --no-document && fluentd -c /fluentd/etc/fluent.conf
+          volumeMounts:
+            - name: config-volume
+              mountPath: /fluentd/etc/
+            - name: varlog
+              mountPath: /var/log
+            - name: varlibdockercontainers
+              mountPath: /var/lib/docker/containers
+              readOnly: true
       volumes:
-      - name: config-volume
-        configMap:
-          name: fluentd-config
-      - name: varlog
-        hostPath:
-          path: /var/log
-      - name: varlibdockercontainers
-        hostPath:
-          path: /var/lib/docker/containers
+        - name: config-volume
+          configMap:
+            name: fluentd-config
+        - name: varlog
+          hostPath:
+            path: /var/log
+        - name: varlibdockercontainers
+          hostPath:
+            path: /var/lib/docker/containers

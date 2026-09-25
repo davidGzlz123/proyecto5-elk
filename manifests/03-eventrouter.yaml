@@ -9,22 +9,23 @@ kind: ClusterRole
 metadata:
   name: eventrouter
 rules:
-- apiGroups: [""]
-  resources: ["events"]
-  verbs: ["get", "watch", "list"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "watch", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: eventrouter
+  namespace: kube-logging
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: eventrouter
 subjects:
-- kind: ServiceAccount
-  name: eventrouter
-  namespace: kube-logging
+  - kind: ServiceAccount
+    name: eventrouter
+    namespace: kube-logging
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -43,7 +44,27 @@ spec:
     spec:
       serviceAccountName: eventrouter
       containers:
-      - name: kube-eventrouter
-        image: bitnami/kubectl:latest
-        command: ["kubectl", "get", "events", "--watch", "--output=json"]
-
+        - name: kube-eventrouter
+          image: gcr.io/heptio-images/eventrouter:v0.3
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: KUBE_API_VERSIONS
+              value: ""
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/eventrouter
+      volumes:
+        - name: config-volume
+          configMap:
+            name: eventrouter-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: eventrouter-config
+  namespace: kube-logging
+data:
+  config.json: |-
+    {
+      "sink": "stdout"
+    }

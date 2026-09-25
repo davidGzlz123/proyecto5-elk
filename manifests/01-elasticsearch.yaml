@@ -6,12 +6,12 @@ metadata:
   labels:
     app: elasticsearch
 spec:
-  clusterIP: None
   ports:
-  - port: 9200
-    name: rest
-  - port: 9300
-    name: inter-node
+    - port: 9200
+      name: rest
+    - port: 9300
+      name: transport
+  clusterIP: None
   selector:
     app: elasticsearch
 ---
@@ -22,7 +22,7 @@ metadata:
   namespace: kube-logging
 spec:
   serviceName: elasticsearch
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       app: elasticsearch
@@ -31,37 +31,68 @@ spec:
       labels:
         app: elasticsearch
     spec:
+      initContainers:
+        - name: fix-permissions
+          image: busybox:1.36
+          command: ["sh", "-c", "chown -R 1000:1000 /usr/share/elasticsearch/data"]
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/elasticsearch/data
       containers:
-      - name: elasticsearch
-        image: docker.elastic.co/elasticsearch/elasticsearch:7.17.10
-        env:
-        - name: cluster.name
-          value: k8s-logs
-        - name: node.name
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: discovery.seed_hosts
-          value: "elasticsearch-0.elasticsearch"
-        - name: cluster.initial_master_nodes
-          value: "elasticsearch-0"
-        - name: ES_JAVA_OPTS
-          value: "-Xms1g -Xmx1g"
-        ports:
-        - containerPort: 9200
-          name: rest
-          protocol: TCP
-        - containerPort: 9300
-          name: inter-node
-          protocol: TCP
-        volumeMounts:
-        - name: data
-          mountPath: /usr/share/elasticsearch/data
+        - name: elasticsearch
+          image: docker.elastic.co/elasticsearch/elasticsearch:7.17.10
+          env:
+            - name: node.name
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: cluster.name
+              value: proyecto5-logging
+            - name: discovery.seed_hosts
+              value: "elasticsearch-0.elasticsearch,elasticsearch-1.elasticsearch,elasticsearch-2.elasticsearch"
+            - name: cluster.initial_master_nodes
+              value: "elasticsearch-0,elasticsearch-1,elasticsearch-2"
+            - name: xpack.security.enabled
+              value: "true"
+            - name: xpack.security.transport.ssl.enabled
+              value: "true"
+            - name: xpack.security.transport.ssl.verification_mode
+              value: certificate
+            - name: xpack.security.transport.ssl.certificate
+              value: /usr/share/elasticsearch/config/certs/elastic-certificate.pem
+            - name: xpack.security.transport.ssl.key
+              value: /usr/share/elasticsearch/config/certs/elastic-certificate.key
+            - name: xpack.security.transport.ssl.certificate_authorities
+              value: /usr/share/elasticsearch/config/certs/elastic-ca.pem
+            - name: path.repo
+              value: /usr/share/elasticsearch/data/backup
+            - name: ELASTIC_PASSWORD
+              value: "Proyecto5Seguro2026!"
+          ports:
+            - containerPort: 9200
+              name: rest
+              protocol: TCP
+            - containerPort: 9300
+              name: transport
+              protocol: TCP
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/elasticsearch/data
+            - name: certs
+              mountPath: /usr/share/elasticsearch/config/certs
+              readOnly: true
+      volumes:
+        - name: certs
+          secret:
+            secretName: elastic-certificates
   volumeClaimTemplates:
-  - metadata:
-      name: data
-    spec:
-      accessModes: [ "ReadWriteOnce" ]
-      resources:
-        requests:
-          storage: 5Gi
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 5Gi

@@ -8,9 +8,9 @@ metadata:
 spec:
   type: NodePort
   ports:
-  - port: 5601
-    targetPort: 5601
-    nodePort: 32000
+    - port: 5601
+      targetPort: 5601
+      nodePort: 32000
   selector:
     app: kibana
 ---
@@ -30,12 +30,14 @@ spec:
         app: kibana
     spec:
       containers:
-      - name: kibana
-        image: docker.elastic.co/kibana/kibana:7.17.10
-        env:
-        - name: ELASTICSEARCH_HOSTS
-          value: "http://elasticsearch:9200"
-        ports:
-        - containerPort: 5601
-          name: web
-          protocol: TCP
+        - name: kibana
+          image: docker.elastic.co/kibana/kibana:7.17.10
+          env:
+            - name: ELASTICSEARCH_HOSTS
+              value: http://elasticsearch.kube-logging.svc.cluster.local:9200
+            - name: ELASTICSEARCH_USERNAME
+              value: elastic
+            - name: ELASTICSEARCH_PASSWORD
+              value: "Proyecto5Seguro2026!"
+          ports:
+            - containerPort: 5601
